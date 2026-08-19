@@ -1,0 +1,228 @@
+# Social Engineering & Phishing Simulation Platform (GoPhish) – Full Step-by-Step Guide
+
+This guide will walk you through building a **realistic phishing simulation platform**
+
+## 1. Project Goals
+
+- Create realistic phishing emails with tracking pixels and malicious links.
+- Build credential capture landing pages.
+- Test email deliverability and authentication (SPF, DKIM, DMARC).
+- Run a phishing campaign and collect open/click/submit data.
+- Generate a user awareness report.
+
+---
+
+## 2. Requirements
+
+- **Computer** (8 GB+ RAM recommended)
+- **VirtualBox or VMware** (or a cloud VPS)
+- **Kali Linux or Ubuntu 22.04** virtual machine
+- **GoPhish** (open-source phishing framework)
+- **Mail server** (for lab testing: Mailhog; for real simulation: a real SMTP relay like Gmail, AWS SES, or Mailgun)
+- **Domain name** (optional but required for SPF/DKIM/DMARC testing)
+
+---
+
+## 3. Lab Setup
+
+### 3.1 Create a Virtual Machine
+
+1. Install VirtualBox.
+2. Download Ubuntu 22.04 LTS ISO and create a new VM.
+3. Set network mode to **NAT** (or Bridged for local network testing).
+
+### 3.2 Install GoPhish
+
+Open a terminal and run:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+
+cd /opt
+sudo wget https://github.com/gophish/gophish/releases/download/v0.12.1/gophish-v0.12.1-linux-64bit.zip
+sudo unzip gophish-v0.12.1-linux-64bit.zip -d gophish
+cd gophish
+
+sudo chmod +x gophish
+sudo ./gophish
+```
+
+- The GoPhish admin web interface will be available at **https://localhost:3333**.
+- The default credentials are printed in the terminal (e.g., `admin` and a random password).
+- The phishing server will listen on **http://0.0.0.0:80** by default.
+
+You can modify ports and other settings by editing `config.json`.
+
+### 3.3 Set Up a Mail Server for Lab Testing
+
+To test email sending without a real inbox, install **Mailhog** (a local mail catcher):
+
+```bash
+sudo apt install golang-go -y
+go install github.com/mailhog/MailHog@latest
+/root/go/bin/MailHog
+```
+
+- Mailhog SMTP server runs on **localhost:1025**.
+- Mailhog UI is available at **http://localhost:8025** to view captured emails.
+
+Now GoPhish can send emails to Mailhog instead of real addresses.
+
+---
+
+## 4. GoPhish Configuration (Admin Panel)
+
+Log in to the admin panel at `https://localhost:3333` and configure the following:
+
+### 4.1 Create a Sending Profile
+
+1. Go to **Sending Profiles** → **New Profile**.
+2. **Name:** `Lab Sender`
+3. **From:** `IT Support <it-support@yourdomain.com>` (use any name for lab testing)
+4. **Host:** `localhost:1025` (Mailhog).  
+   For real SMTP, use something like `smtp.gmail.com:587` with credentials.
+5. Check **Ignore Certificate Errors**.
+6. Save.
+
+### 4.2 Create an Email Template
+
+1. Go to **Email Templates** → **New Template**.
+2. **Name:** `Password Reset`
+3. **Subject:** `Action Required: Password Expiration`
+4. In the HTML body, write a realistic email. GoPhish automatically inserts a tracking pixel and replaces `{{.URL}}` with the phishing link.
+   Example:
+   ```html
+   <p>Dear User,</p>
+   <p>Your password will expire in 24 hours. Please <a href="{{.URL}}">reset your password here</a>.</p>
+   ```
+5. Check **Add Tracking Image** to enable open tracking.
+6. Save.
+
+### 4.3 Create a Landing Page (Credential Capture)
+
+1. Go to **Landing Pages** → **New Page**.
+2. **Name:** `Office365 Login`
+3. Use **Import Site** to clone a real login page (only with permission). For example, `https://login.microsoftonline.com`.
+4. Edit the HTML so the form submits to GoPhish (this is automatic in GoPhish).
+5. Check **Capture Submitted Data**.
+6. In **Redirect to**, enter the real URL (e.g., `https://www.office.com`) so after credentials are submitted, the victim is redirected to the legitimate site.
+7. Save.
+
+### 4.4 Create a User Group
+
+1. Go to **Users & Groups** → **New Group**.
+2. **Name:** `Test Users`
+3. Import users via CSV with columns: `First Name,Last Name,Email`
+   Example:
+   ```
+   First Name,Last Name,Email
+   John,Doe,john@example.com
+   Jane,Smith,jane@example.com
+   ```
+4. Save.
+
+---
+
+## 5. Launch a Campaign
+
+1. Go to **Campaigns** → **New Campaign**.
+2. Fill in:
+   - **Name:** `Password Reset Simulation`
+   - **Sending Profile:** `Lab Sender`
+   - **Email Template:** `Password Reset`
+   - **Landing Page:** `Office365 Login`
+   - **URL:** `http://<your-ip>` (the IP/domain of your GoPhish server)
+   - **Launch Date:** now
+   - **User Group:** `Test Users`
+3. Click **Launch Campaign**.
+
+---
+
+## 6. Tracking and Reporting
+
+During and after the campaign, the GoPhish dashboard shows real-time statistics:
+
+- **Emails Sent**
+- **Emails Opened** (via tracking pixel)
+- **Clicked Link**
+- **Submitted Data** (credentials captured)
+
+**Export a report:**
+
+- Open the campaign and click **Export CSV**.
+- Use Excel or a script to create charts.
+- GoPhish also provides built-in bar charts.
+
+---
+
+## 7. SPF, DKIM, and DMARC Testing
+
+Real-world phishing simulations need to bypass email authentication to reach the inbox. Here’s how to test and understand these mechanisms.
+
+### 7.1 Check DNS Records
+
+Use `dig` to check a domain’s email authentication records:
+
+```bash
+# SPF
+dig TXT yourdomain.com | grep "v=spf1"
+
+# DMARC
+dig TXT _dmarc.yourdomain.com
+
+# DKIM (common selectors)
+dig TXT default._domainkey.yourdomain.com
+dig TXT google._domainkey.yourdomain.com
+```
+
+- **SPF** verifies the sending IP is authorized.
+- **DKIM** adds a cryptographic signature to the email.
+- **DMARC** tells receiving servers what to do if SPF/DKIM fail (none, quarantine, reject).
+
+### 7.2 Bypass Techniques (Educational)
+
+Attackers often use:
+
+- **Domain typosquatting** – registering a look-alike domain (e.g., `microsfot.com`).
+- **Display name spoofing** – using a legitimate name but a different email address.
+- **Look-alike domains with valid authentication** – setting up SPF/DKIM/DMARC on a similar domain.
+
+In your simulation, you can test these methods (with permission), but real spoofing of a domain with strict DMARC will fail.
+
+---
+
+## 8. Additional Tips for Credential Capture
+
+- Ensure **Capture Submitted Data** is enabled on the landing page.
+- Use **HTTPS** to avoid browser warnings. You can add a self-signed certificate to GoPhish:
+  ```bash
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout gophish.key -out gophish.crt
+  ```
+  Then edit `config.json` to enable TLS and point to the certificate files.
+- Redirect to the real site after credentials are submitted to reduce suspicion.
+
+---
+
+## 9. Measuring User Awareness
+
+From campaign results, you can calculate:
+
+- **Phishing-prone percentage** = (Clicked Link + Submitted Data) / Total Emails Sent
+- **Open rate** = Opened Emails / Total Emails Sent
+- **Report rate** = Number of users who reported the email (requires a separate reporting mechanism, e.g., a dedicated mailbox or a "Report Phish" button).
+
+Create a summary report for management showing these metrics.
+
+---
+
+## 10. Enhancements / Next Steps
+
+- **AI-generated email content** – integrate an AI API to personalize phishing emails.
+- **HTML smuggling attachments** – attach malicious HTML files to test attachment handling.
+- **Automated campaign scheduling** – use cron jobs to launch campaigns automatically.
+- **SPF/DKIM/DMARC analysis tool** – write a script that checks multiple domains for weak authentication.
+- **Dashboard with Grafana** – visualize campaign data over time.
+
+---
+
+

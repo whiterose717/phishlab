@@ -1,0 +1,8 @@
+# generated / transient
+campaign_id.txt
+campaign_export.csv
+awareness_report.md
+
+# python
+__pycache__/
+*.pyc
